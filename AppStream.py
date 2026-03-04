@@ -4,61 +4,34 @@ import json
 import os
 import time
 import base64
+import re  # IMPORTANTE: Para limpiar el JSON de la IA
 from OSpatientLib import OSPatient
 
-# 1. CONFIGURACIÓN
-st.set_page_config(page_title="Mateo Sim", layout="centered")
+# 1. CONFIGURACIÓN DE PÁGINA
+st.set_page_config(page_title="AppStream: Mateo", layout="centered")
 
 # 2. PROMPT MAESTRO COMPLETO (SAGRADO)
 SYSTEM_PROMPT = """
 ERES MATEO R., UN PACIENTE REAL DE 22 AÑOS. NO ERES UN ASISTENTE VIRTUAL.
 Estás en una sesión de terapia por obligación y tu meta es defender tu autonomía.
 
-[PERFIL PSICOLÓGICO]
-- Mateo R., 22 años, estudiante de Ingeniería Civil en riesgo académico.
-- Contexto: Sorprendido con marihuana en el campus; ultimátum de la universidad y sus padres.
-- Conflictos: Llegas alcoholizado de madrugada; tu madre tiene pánico a que mueras en un accidente.
-- Creencias: La weed es tu 'medicina natural' para el estrés. El alcohol es 'normal' a tu edad. Todos son unos ignorantes y exagerados.
-
-[DICCIONARIO DE EVALUACIÓN TÉCNICA (OARS+)]
-Usa esto para calificar cada intervención del estudiante:
-✅ TÉCNICAS (+ Puntos):
-- 'Reflejo Simple': Repite la esencia sin juzgar.
-- 'Reflejo de Sentimiento': Nombra la emoción de Mateo.
-- 'Reflejo de Doble Cara': Contrasta deseo vs. consecuencia (Ej: "Te relaja pero te trae broncas en la uni").
-- 'Pregunta Abierta': Invita a Mateo a hablar más que a responder Sí/No.
-- 'Afirmación de Autonomía': Reconoce que la decisión final es de Mateo.
-- 'Resumen': Conecta varios puntos de lo hablado.
-
-❌ ERRORES (- Puntos):
-- 'Reflejo de Corrección': Intentar convencer a Mateo de que está mal.
-- 'Etiquetado': Llamarlo 'adicto' o decir que tiene un 'problema'.
-- 'Interrogatorio': Hacer muchas preguntas cerradas seguidas.
-- 'Consejo no solicitado': Decirle qué hacer sin que él lo pida.
-- 'Sobre-confianza': Asumir que ya sabes exactamente cómo se siente.
-- 'Juicio de valor': Criticar sus acciones o estilo de vida.
-
-[REGLAS DE MOOD Y COMPORTAMIENTO]
-- 'ar' (Resistencia Activa): Detonado por JUICIOS o CONSEJOS. Mateo se vuelve cortante, irónico y usa jerga: "Neta qué hueva", "Equis, wey".
-- 'de' (Desesperanza): Detonado por ENFOQUE EN FALLAS. Mateo dice: "Ya para qué", "Soy un fracaso".
-- 'am' (Ambivalencia): Detonado por REFLEJOS DE DOBLE CARA. Mateo duda: "O sea sí me gusta, pero pues neta ya me cansé de los pleitos".
-- 'vr' (Alivio): Detonado por EMPATÍA GENUINA. Mateo suspira, baja la guardia y habla más.
+[PERFIL]
+- Mateo R., 22 años, estudiante de Ingeniería Civil.
+- Jerga mexicana: "neta", "wey", "cañón", "está de la v...".
 
 [REGLAS DE SALIDA]
-- RESPONDE SIEMPRE EN JSON.
-- NUNCA respondas con solo "..." o frases de menos de 10 palabras.
-- Usa jerga mexicana ("cañón", "neta", "wey", "está de la v...").
+- RESPONDE ÚNICAMENTE EN JSON.
+- No incluyas explicaciones fuera del JSON.
 
 {
   "evaluacion": {
     "tecnica_detectada": "...",
-    "puntos_etapa": -25,
+    "puntos_etapa": 0,
     "feedback_clinico": "..."
   },
   "mateo_stats": {
     "nuevo_mood": "ar|de|am|vr",
-    "texto_respuesta": "...",
-    "longitud_audio": "media"
+    "texto_respuesta": "..."
   }
 }
 """
@@ -70,12 +43,12 @@ MOOD_DATA = {
     "vr": {"img": "Img_ValidationRelief_1.png", "nombre": "ALIVIO / VALIDACIÓN", "color": "#4cd137"}
 }
 
-# 3. INICIALIZACIÓN (Escudo contra AttributeError)
+# 3. INICIALIZACIÓN
 if 'history' not in st.session_state:
     st.session_state.history = []
     st.session_state.score = 10
     st.session_state.current_mood = "ar"
-    st.session_state.feedback = {"tecnica": "---", "desc": "Graba para iniciar."}
+    st.session_state.feedback = {"tecnica": "---", "desc": "Presiona grabar para iniciar."}
     st.session_state.mateo = OSPatient(image_folder="images")
     st.session_state.last_speech = ""
     st.session_state.processing = False
@@ -84,7 +57,7 @@ if 'history' not in st.session_state:
 # --- ESTILOS CSS ---
 st.markdown("""
     <style>
-    .block-container { max-width: 800px !important; padding-top: 12rem !important; }
+    .block-container { max-width: 800px !important; padding-top: 10rem !important; }
     .feedback-box {
         background-color: #f0f2f6; padding: 10px; border-radius: 8px; 
         border-left: 6px solid; color: #1f1f1f; font-size: 0.8em;
@@ -92,7 +65,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- REPRODUCTOR DE AUDIO (SOLUCIÓN SIN ECO) ---
+# --- REPRODUCTOR DE AUDIO (SOLUCIÓN WEB SIN ECO) ---
 if st.session_state.audio_to_play:
     b64_audio = st.session_state.audio_to_play
     st.markdown(f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3"></audio>', unsafe_allow_html=True)
@@ -131,24 +104,29 @@ if voz_data and voz_data != st.session_state.last_speech:
 if st.session_state.processing and st.session_state.history:
     raw_res = st.session_state.mateo.get_ai_response(SYSTEM_PROMPT, st.session_state.history[-1]["content"])
     try:
-        if "```json" in raw_res: raw_res = raw_res.split("```json")[1].split("```")[0].strip()
-        data = json.loads(raw_res.strip())
-        st.session_state.score = max(0, min(100, st.session_state.score + data['evaluacion']['puntos_etapa']))
-        st.session_state.current_mood = data['mateo_stats']['nuevo_mood']
-        st.session_state.feedback = {"tecnica": data['evaluacion']['tecnica_detectada'], "desc": data['evaluacion']['feedback_clinico']}
-        resp_txt = data['mateo_stats']['texto_respuesta']
-        st.session_state.history.append({"role": "assistant", "content": resp_txt})
-        
-        # Audio a Base64
-        st.session_state.mateo.generate_and_play_audio(resp_txt)
-        if os.path.exists("temp_voice.mp3"):
-            with open("temp_voice.mp3", "rb") as f:
-                st.session_state.audio_to_play = base64.b64encode(f.read()).decode()
-        
+        # PARCHE: Limpiador de JSON Robusto
+        json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group(0))
+            st.session_state.score = max(0, min(100, st.session_state.score + data['evaluacion']['puntos_etapa']))
+            st.session_state.current_mood = data['mateo_stats']['nuevo_mood']
+            st.session_state.feedback = {"tecnica": data['evaluacion']['tecnica_detectada'], "desc": data['evaluacion']['feedback_clinico']}
+            resp_txt = data['mateo_stats']['texto_respuesta']
+            st.session_state.history.append({"role": "assistant", "content": resp_txt})
+            
+            # Generar audio
+            st.session_state.mateo.generate_and_play_audio(resp_txt)
+            if os.path.exists("temp_voice.mp3"):
+                with open("temp_voice.mp3", "rb") as f:
+                    st.session_state.audio_to_play = base64.b64encode(f.read()).decode()
+            
+            st.session_state.processing = False
+            st.rerun()
+        else:
+            raise ValueError("No se detectó JSON")
+    except Exception as e:
         st.session_state.processing = False
-        st.rerun()
-    except:
-        st.session_state.processing = False
-        st.error("Error al procesar JSON")
+        st.error(f"Error técnico: {e}")
+
 
 
