@@ -10,7 +10,7 @@ from OSpatientLib import OSPatient
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="AppStream: Mateo", layout="centered")
 
-# 2. PROMPT MAESTRO (SAGRADO Y REFORZADO)
+# 2. PROMPT MAESTRO (SAGRADO)
 SYSTEM_PROMPT = """
 ERES MATEO R., UN PACIENTE REAL DE 22 AÑOS. NO ERES UN ASISTENTE VIRTUAL.
 Estás en una sesión de terapia por obligación y tu meta es defender tu autonomía.
@@ -49,7 +49,7 @@ if 'history' not in st.session_state:
     st.session_state.processing = False
     st.session_state.audio_to_play = None
 
-# --- ESTILOS CSS (BAJAR INTERFAZ) ---
+# --- ESTILOS CSS ---
 st.markdown("""
     <style>
     .block-container { max-width: 800px !important; padding-top: 10rem !important; }
@@ -60,7 +60,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- REPRODUCTOR DE AUDIO (SIN ECO) ---
+# --- REPRODUCTOR DE AUDIO ---
 if st.session_state.audio_to_play:
     b64 = st.session_state.audio_to_play
     st.markdown(f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
@@ -102,25 +102,29 @@ if st.session_state.processing and st.session_state.history:
         # LIMPIADOR ROBUSTO DE JSON
         json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
         if json_match:
-            clean_json = json_match.group(0).replace("'", '"') # Parche comillas simples
+            clean_json = json_match.group(0).replace("'", '"')
             data = json.loads(clean_json)
             
-            st.session_state.score = max(0, min(100, st.session_state.score + data['evaluacion']['puntos_etapa']))
-            st.session_state.current_mood = data['mateo_stats']['nuevo_mood']
-            st.session_state.feedback = {"tecnica": data['evaluacion']['tecnica_detectada'], "desc": data['evaluacion']['feedback_clinico']}
-            resp_txt = data['mateo_stats']['texto_respuesta']
-            st.session_state.history.append({"role": "assistant", "content": resp_txt})
-            
-            # Generar audio y guardarlo para el siguiente render
-            st.session_state.mateo.generate_and_play_audio(resp_txt)
-            if os.path.exists("temp_voice.mp3"):
-                with open("temp_voice.mp3", "rb") as f:
-                    st.session_state.audio_to_play = base64.b64encode(f.read()).decode()
-            
-            st.session_state.processing = False
-            st.rerun()
+            # Si hay un error desde la librería, lo mostramos
+            if "error" in data:
+                st.error(f"Error de API: {data['error']}")
+                st.session_state.processing = False
+            else:
+                st.session_state.score = max(0, min(100, st.session_state.score + data['evaluacion']['puntos_etapa']))
+                st.session_state.current_mood = data['mateo_stats']['nuevo_mood']
+                st.session_state.feedback = {"tecnica": data['evaluacion']['tecnica_detectada'], "desc": data['evaluacion']['feedback_clinico']}
+                resp_txt = data['mateo_stats']['texto_respuesta']
+                st.session_state.history.append({"role": "assistant", "content": resp_txt})
+                
+                st.session_state.mateo.generate_and_play_audio(resp_txt)
+                if os.path.exists("temp_voice.mp3"):
+                    with open("temp_voice.mp3", "rb") as f:
+                        st.session_state.audio_to_play = base64.b64encode(f.read()).decode()
+                
+                st.session_state.processing = False
+                st.rerun()
         else:
-            raise ValueError("No JSON found")
+            raise ValueError("Respuesta no válida")
     except Exception as e:
         st.session_state.processing = False
         st.error(f"Error técnico de formato. Reintenta hablar.")
