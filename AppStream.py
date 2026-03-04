@@ -4,24 +4,19 @@ import json
 import os
 import time
 import base64
-import re  # IMPORTANTE: Para limpiar el JSON de la IA
+import re
 from OSpatientLib import OSPatient
 
 # 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="AppStream: Mateo", layout="centered")
 
-# 2. PROMPT MAESTRO COMPLETO (SAGRADO)
+# 2. PROMPT MAESTRO (SAGRADO Y REFORZADO)
 SYSTEM_PROMPT = """
 ERES MATEO R., UN PACIENTE REAL DE 22 AÑOS. NO ERES UN ASISTENTE VIRTUAL.
 Estás en una sesión de terapia por obligación y tu meta es defender tu autonomía.
 
-[PERFIL]
-- Mateo R., 22 años, estudiante de Ingeniería Civil.
-- Jerga mexicana: "neta", "wey", "cañón", "está de la v...".
-
-[REGLAS DE SALIDA]
-- RESPONDE ÚNICAMENTE EN JSON.
-- No incluyas explicaciones fuera del JSON.
+[PERFIL] Mateo R., 22 años, estudiante de Ingeniería Civil. Jerga: "neta", "wey", "cañón".
+[REGLA DE ORO] RESPONDE EXCLUSIVAMENTE EN JSON. USA COMILLAS DOBLES (").
 
 {
   "evaluacion": {
@@ -54,7 +49,7 @@ if 'history' not in st.session_state:
     st.session_state.processing = False
     st.session_state.audio_to_play = None
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS (BAJAR INTERFAZ) ---
 st.markdown("""
     <style>
     .block-container { max-width: 800px !important; padding-top: 10rem !important; }
@@ -65,10 +60,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- REPRODUCTOR DE AUDIO (SOLUCIÓN WEB SIN ECO) ---
+# --- REPRODUCTOR DE AUDIO (SIN ECO) ---
 if st.session_state.audio_to_play:
-    b64_audio = st.session_state.audio_to_play
-    st.markdown(f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3"></audio>', unsafe_allow_html=True)
+    b64 = st.session_state.audio_to_play
+    st.markdown(f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
     st.session_state.audio_to_play = None
 
 # --- INTERFAZ ---
@@ -86,7 +81,7 @@ with col_chat:
     chat_container = st.container(height=280)
     for msg in st.session_state.history:
         with chat_container.chat_message(msg["role"]):
-            st.write(msg["content"])
+            st.markdown(f"<span style='font-size:0.85em;'>{msg['content']}</span>", unsafe_allow_html=True)
 
     if not st.session_state.processing:
         voz_data = speech_to_text(language='es', start_prompt="🎤 HABLAR", stop_prompt="🛑 ENVIAR", just_once=True, key='v_final')
@@ -104,17 +99,19 @@ if voz_data and voz_data != st.session_state.last_speech:
 if st.session_state.processing and st.session_state.history:
     raw_res = st.session_state.mateo.get_ai_response(SYSTEM_PROMPT, st.session_state.history[-1]["content"])
     try:
-        # PARCHE: Limpiador de JSON Robusto
+        # LIMPIADOR ROBUSTO DE JSON
         json_match = re.search(r'\{.*\}', raw_res, re.DOTALL)
         if json_match:
-            data = json.loads(json_match.group(0))
+            clean_json = json_match.group(0).replace("'", '"') # Parche comillas simples
+            data = json.loads(clean_json)
+            
             st.session_state.score = max(0, min(100, st.session_state.score + data['evaluacion']['puntos_etapa']))
             st.session_state.current_mood = data['mateo_stats']['nuevo_mood']
             st.session_state.feedback = {"tecnica": data['evaluacion']['tecnica_detectada'], "desc": data['evaluacion']['feedback_clinico']}
             resp_txt = data['mateo_stats']['texto_respuesta']
             st.session_state.history.append({"role": "assistant", "content": resp_txt})
             
-            # Generar audio
+            # Generar audio y guardarlo para el siguiente render
             st.session_state.mateo.generate_and_play_audio(resp_txt)
             if os.path.exists("temp_voice.mp3"):
                 with open("temp_voice.mp3", "rb") as f:
@@ -123,10 +120,7 @@ if st.session_state.processing and st.session_state.history:
             st.session_state.processing = False
             st.rerun()
         else:
-            raise ValueError("No se detectó JSON")
+            raise ValueError("No JSON found")
     except Exception as e:
         st.session_state.processing = False
-        st.error(f"Error técnico: {e}")
-
-
-
+        st.error(f"Error técnico de formato. Reintenta hablar.")
