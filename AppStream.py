@@ -6,10 +6,10 @@ import time
 import base64
 from OSpatientLib import OSPatient
 
-# 1. CONFIGURACIÓN
+# 1. CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="AppStream: Mateo", layout="centered")
 
-# 2. PROMPT MAESTRO COMPLETO (SAGRADO)
+# 2. PROMPT MAESTRO COMPLETO
 SYSTEM_PROMPT = """
 ERES MATEO R., UN PACIENTE REAL DE 22 AÑOS. NO ERES UN ASISTENTE VIRTUAL.
 Estás en una sesión de terapia por obligación y tu meta es defender tu autonomía.
@@ -23,47 +23,22 @@ Estás en una sesión de terapia por obligación y tu meta es defender tu autono
 [DICCIONARIO DE EVALUACIÓN TÉCNICA (OARS+)]
 Usa esto para calificar cada intervención del estudiante:
 ✅ TÉCNICAS (+ Puntos):
-- 'Reflejo Simple': Repite la esencia sin juzgar.
-- 'Reflejo de Sentimiento': Nombra la emoción de Mateo.
-- 'Reflejo de Doble Cara': Contrasta deseo vs. consecuencia (Ej: "Te relaja pero te trae broncas en la uni").
-- 'Pregunta Abierta': Invita a Mateo a hablar más que a responder Sí/No.
-- 'Afirmación de Autonomía': Reconoce que la decisión final es de Mateo.
-- 'Resumen': Conecta varios puntos de lo hablado.
+- 'Reflejo Simple', 'Reflejo de Sentimiento', 'Reflejo de Doble Cara', 'Pregunta Abierta', 'Afirmación de Autonomía', 'Resumen'.
 
 ❌ ERRORES (- Puntos):
-- 'Reflejo de Corrección': Intentar convencer a Mateo de que está mal.
-- 'Etiquetado': Llamarlo 'adicto' o decir que tiene un 'problema'.
-- 'Interrogatorio': Hacer muchas preguntas cerradas seguidas.
-- 'Consejo no solicitado': Decirle qué hacer sin que él lo pida.
-- 'Sobre-confianza': Asumir que ya sabes exactamente cómo se siente.
-- 'Juicio de valor': Criticar sus acciones o estilo de vida.
+- 'Reflejo de Corrección', 'Etiquetado', 'Interrogatorio', 'Consejo no solicitado', 'Sobre-confianza', 'Juicio de valor'.
 
-[REGLAS DE MOOD Y COMPORTAMIENTO]
-- 'ar' (Resistencia Activa): Detonado por JUICIOS o CONSEJOS. Mateo se vuelve cortante, irónico y usa jerga: "Neta qué hueva", "Equis, wey".
-- 'de' (Desesperanza): Detonado por ENFOQUE EN FALLAS. Mateo dice: "Ya para qué", "Soy un fracaso".
-- 'am' (Ambivalencia): Detonado por REFLEJOS DE DOBLE CARA. Mateo duda: "O sea sí me gusta, pero pues neta ya me cansé de los pleitos".
-- 'vr' (Alivio): Detonado por EMPATÍA GENUINA. Mateo suspira, baja la guardia y habla más.
+[REGLAS DE MOOD]
+- 'ar' (Resistencia Activa), 'de' (Desesperanza), 'am' (Ambivalencia), 'vr' (Alivio).
 
 [REGLAS DE SALIDA]
-- RESPONDE SIEMPRE EN JSON.
-- NUNCA respondas con solo "..." o frases de menos de 10 palabras.
-- Usa jerga mexicana ("cañón", "neta", "wey", "está de la v...").
-
+- RESPONDE SIEMPRE EN JSON. Usa jerga mexicana ("neta", "wey").
 {
-  "evaluacion": {
-    "tecnica_detectada": "...",
-    "puntos_etapa": -25,
-    "feedback_clinico": "..."
-  },
-  "mateo_stats": {
-    "nuevo_mood": "ar|de|am|vr",
-    "texto_respuesta": "...",
-    "longitud_audio": "media"
-  }
+  "evaluacion": { "tecnica_detectada": "...", "puntos_etapa": 0, "feedback_clinico": "..." },
+  "mateo_stats": { "nuevo_mood": "ar", "texto_respuesta": "..." }
 }
 """
 
-# 3. MAPEADO DE MOODS
 MOOD_DATA = {
     "ar": {"img": "Img_ActiveResistance_1.png", "nombre": "RESISTENCIA ACTIVA", "color": "#e84118"},
     "de": {"img": "Img_Despair_1.png", "nombre": "DESESPERANZA", "color": "#9c88ff"},
@@ -71,28 +46,36 @@ MOOD_DATA = {
     "vr": {"img": "Img_ValidationRelief_1.png", "nombre": "ALIVIO / VALIDACIÓN", "color": "#4cd137"}
 }
 
-# 4. INICIALIZACIÓN
+# 4. INICIALIZACIÓN (Escudo contra AttributeError)
 if 'history' not in st.session_state:
     st.session_state.history = []
     st.session_state.score = 10
     st.session_state.current_mood = "ar"
-    st.session_state.feedback = {"tecnica": "---", "desc": "Graba para iniciar."}
+    st.session_state.feedback = {"tecnica": "---", "desc": "Presiona grabar para iniciar."}
     st.session_state.mateo = OSPatient(image_folder="images")
     st.session_state.last_speech = ""
     st.session_state.processing = False
+    st.session_state.audio_to_play = None
 
-# --- CSS: ESPACIADO SUPERIOR ---
+# --- ESTILOS CSS ---
 st.markdown("""
     <style>
-    .block-container { max-width: 800px !important; padding-top: 8rem !important; }
-    .feedback-box { background-color: #f0f2f6; padding: 10px; border-radius: 8px; border-left: 6px solid; color: #1f1f1f; font-size: 0.8em; }
+    .block-container { max-width: 800px !important; padding-top: 10rem !important; }
+    .feedback-box {
+        background-color: #f0f2f6; padding: 10px; border-radius: 8px; 
+        border-left: 6px solid; color: #1f1f1f; font-size: 0.8em;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- ESPACIO RESERVADO PARA EL AUDIO (Evita el eco) ---
-audio_placeholder = st.empty()
+# --- REPRODUCTOR DE AUDIO (SOLUCIÓN SIN ECO) ---
+if st.session_state.audio_to_play:
+    b64_audio = st.session_state.audio_to_play
+    audio_html = f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3"></audio>'
+    st.markdown(audio_html, unsafe_allow_html=True)
+    st.session_state.audio_to_play = None # Se limpia para que no se repita en el próximo rerun
 
-# --- DISTRIBUCIÓN ---
+# --- INTERFAZ ---
 col_stats, col_chat = st.columns([1, 1.6])
 
 with col_stats:
@@ -100,7 +83,6 @@ with col_stats:
     img_path = os.path.join("images", mood_info["img"])
     if os.path.exists(img_path): st.image(img_path, width=180)
     st.markdown(f"<p style='color:{mood_info['color']}; font-weight:bold; margin:0;'>{mood_info['nombre']}</p>", unsafe_allow_html=True)
-    st.write(f"**Etapa:** {st.session_state.score}%")
     st.progress(st.session_state.score / 100)
     st.markdown(f'<div class="feedback-box" style="border-left-color: {mood_info["color"]};"><b>{st.session_state.feedback["tecnica"]}</b><br>{st.session_state.feedback["desc"]}</div>', unsafe_allow_html=True)
 
@@ -110,6 +92,7 @@ with col_chat:
         with chat_container.chat_message(msg["role"]):
             st.markdown(f"<span style='font-size:0.85em;'>{msg['content']}</span>", unsafe_allow_html=True)
 
+    # BOTÓN DINÁMICO
     if not st.session_state.processing:
         voz_data = speech_to_text(language='es', start_prompt="🎤 HABLAR", stop_prompt="🛑 ENVIAR", just_once=True, key='v_final')
     else:
@@ -123,7 +106,7 @@ if voz_data and voz_data != st.session_state.last_speech:
     st.session_state.history.append({"role": "user", "content": voz_data})
     st.rerun()
 
-if st.session_state.processing:
+if st.session_state.processing and st.session_state.history:
     with st.spinner("..."):
         raw_res = st.session_state.mateo.get_ai_response(SYSTEM_PROMPT, st.session_state.history[-1]["content"])
         try:
@@ -136,19 +119,15 @@ if st.session_state.processing:
             resp_txt = data['mateo_stats']['texto_respuesta']
             st.session_state.history.append({"role": "assistant", "content": resp_txt})
             
-            # --- GENERACIÓN DE AUDIO EN EL SERVIDOR ---
+            # Generar audio y guardarlo en Base64 en el estado de sesión
             st.session_state.mateo.generate_and_play_audio(resp_txt)
-            
             if os.path.exists("temp_voice.mp3"):
                 with open("temp_voice.mp3", "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode()
-                    # Inyectamos el audio en el placeholder justo antes de terminar
-                    audio_placeholder.markdown(f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
+                    st.session_state.audio_to_play = base64.b64encode(f.read()).decode()
             
             st.session_state.processing = False
-            time.sleep(0.1) # Pausa mínima para que el navegador "cachee" el audio
-            st.rerun()
-            
-        except Exception as e:
+            st.rerun() # Al recargar, se activará el reproductor de audio al inicio
+        except:
             st.session_state.processing = False
-            st.error(f"Error: {e}")
+            st.error("Error al procesar respuesta")
+
