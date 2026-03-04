@@ -5,8 +5,9 @@ import nest_asyncio
 import time
 from openai import OpenAI
 import streamlit as st
+import json
 
-# Intentar importar librerías de audio local (Si fallan en la nube, no rompen el código)
+# Intentar importar librerías de audio local (PC)
 try:
     import pygame
     pygame_disponible = True
@@ -58,7 +59,8 @@ class OSPatient:
 
     def get_ai_response(self, system_prompt, student_text):
         api_key = self._load_api_key()
-        if not api_key: return '{"error": "No API Key"}'
+        if not api_key: 
+            return json.dumps({"error": "No API Key"})
         
         client = OpenAI(api_key=api_key)
         try:
@@ -68,8 +70,9 @@ class OSPatient:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": student_text}
                 ],
-                response_format={ "type": "json_object" } # Fuerza formato JSON
+                response_format={ "type": "json_object" }
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f'{"error": "{str(e)}"}'
+            # Línea 75 Corregida: Evita SyntaxError usando json.dumps
+            return json.dumps({"error": str(e)})
