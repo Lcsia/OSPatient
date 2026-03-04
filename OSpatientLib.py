@@ -1,14 +1,31 @@
 import edge_tts
-import pygame
 import asyncio
 import os
 import nest_asyncio
 import time
-import speech_recognition as sr
-import pyaudio
-import wave
-from openai import OpenAI # Ensure you have: pip install openai
+from openai import OpenAI
 
+# Intentar importar librerías de audio local (PC)
+# Si fallan (como en Streamlit Cloud), se les asigna None y el código sigue
+try:
+    import pygame
+except ImportError:
+    pygame = None
+
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
+
+try:
+    import speech_recognition as sr
+except ImportError:
+    sr = None
+
+try:
+    import wave
+except ImportError:
+    wave = None
 class OSPatient:
     def __init__(self, image_folder="images"):
         """
@@ -201,4 +218,5 @@ class OSPatient:
             )
             return response.choices[0].message.content
         except Exception as e:
+
             return f"Error connecting to OpenAI: {e}"
