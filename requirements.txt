@@ -3,3 +3,4 @@ streamlit-mic-recorder
 edge-tts
 openai
 pygame
+nest-asyncio
