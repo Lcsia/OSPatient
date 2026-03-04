@@ -1,3 +1,5 @@
+import nest_asyncio
+nest_asyncio.apply()
 import streamlit as st
 from streamlit_mic_recorder import speech_to_text
 import json
@@ -159,4 +161,5 @@ if st.session_state.processing:
             
         except Exception as e:
             st.session_state.processing = False
+
             st.error(f"Error: {e}")
