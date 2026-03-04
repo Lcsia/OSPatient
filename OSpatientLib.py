@@ -12,21 +12,11 @@ try:
 except ImportError:
     pygame = None
 
-try:
-    import pyaudio
-except ImportError:
-    pyaudio = None
-
-try:
-    import speech_recognition as sr
-except ImportError:
-    sr = None
-
 class OSPatient:
     def __init__(self, image_folder="images"):
         nest_asyncio.apply()
         
-        # Inicializar mixer solo si existe la librería (Local)
+        # Inicializar mixer solo si existe la librería (Modo Local)
         if pygame and not pygame.mixer.get_init():
             try:
                 pygame.mixer.init()
@@ -44,9 +34,10 @@ class OSPatient:
         self.voices = {"male": "es-MX-JorgeNeural", "female": "es-MX-DaliaNeural"}
 
     def _load_api_key(self):
-        # Primero busca en Secrets (Nube), luego en archivo local
+        # Busca primero en los Secrets de Streamlit (Nube)
         if "OPENAI_API_KEY" in st.secrets:
             return st.secrets["OPENAI_API_KEY"]
+        # Si no, intenta buscar un archivo local (Solo para tus pruebas en PC)
         try:
             with open("keys.txt", "r") as f:
                 return f.read().strip()
@@ -60,7 +51,7 @@ class OSPatient:
             communicate = edge_tts.Communicate(text, voice)
             await communicate.save(self.temp_audio)
 
-        # Detener audio previo si pygame existe
+        # Limpieza de audio previo si estamos en local
         if pygame and pygame.mixer.get_init():
             pygame.mixer.music.stop()
             pygame.mixer.music.unload() 
@@ -72,11 +63,11 @@ class OSPatient:
             time.sleep(0.3)
             loop.run_until_complete(_save())
         
-        return 5.0 # Duración estimada
+        return 5.0
 
     def get_ai_response(self, system_prompt, student_text):
         api_key = self._load_api_key()
-        if not api_key: return "Error: No API Key found."
+        if not api_key: return "Error: No API Key configurada."
         
         client = OpenAI(api_key=api_key)
         try:
@@ -91,5 +82,5 @@ class OSPatient:
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"Error connecting to OpenAI: {e}"
+            return f"Error en OpenAI: {e}"
 
