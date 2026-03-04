@@ -9,7 +9,6 @@ import streamlit as st
 # Intentar importar librerías de audio local
 try:
     import pygame
-    # Intentamos una inicialización falsa para ver si falla
     pygame_disponible = True
 except (ImportError, NotImplementedError):
     pygame = None
@@ -18,19 +17,16 @@ except (ImportError, NotImplementedError):
 class OSPatient:
     def __init__(self, image_folder="images"):
         nest_asyncio.apply()
-        
         self.image_folder = image_folder
         self.temp_audio = "temp_voice.mp3"
         
-        # --- PROTECCIÓN DE PYGAME EN EL INIT ---
+        # Protección de inicialización
         if pygame_disponible and pygame:
             try:
                 if not pygame.mixer.get_init():
                     pygame.mixer.init()
-            except Exception:
-                # Si falla aquí, desactivamos pygame para el resto de la sesión
-                global pygame_disponible
-                pygame_disponible = False
+            except:
+                pass
             
         self.mood_map = {
             "ar": "ActiveResistance",
@@ -56,29 +52,12 @@ class OSPatient:
             communicate = edge_tts.Communicate(text, voice)
             await communicate.save(self.temp_audio)
 
-        # Solo usamos pygame si está disponible
-        if pygame_disponible and pygame and pygame.mixer.get_init():
-            try:
-                pygame.mixer.music.stop()
-                pygame.mixer.music.unload() 
-            except:
-                pass
-        
         loop = asyncio.get_event_loop()
         try:
             loop.run_until_complete(_save())
         except:
             time.sleep(0.3)
             loop.run_until_complete(_save())
-        
-        # En la nube no cargamos el archivo en pygame, 
-        # solo lo dejamos guardado para que AppStream lo lea con Base64
-        if pygame_disponible and pygame and pygame.mixer.get_init():
-            try:
-                pygame.mixer.music.load(self.temp_audio)
-                pygame.mixer.music.play()
-            except:
-                pass
         
         return 5.0
 
