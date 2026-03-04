@@ -1,5 +1,3 @@
-import nest_asyncio
-nest_asyncio.apply()
 import streamlit as st
 from streamlit_mic_recorder import speech_to_text
 import json
@@ -8,7 +6,7 @@ import time
 import base64
 from OSpatientLib import OSPatient
 
-# 1. CONFIGURACIÓN DE PÁGINA
+# 1. CONFIGURACIÓN
 st.set_page_config(page_title="AppStream: Mateo", layout="centered")
 
 # 2. PROMPT MAESTRO COMPLETO (SAGRADO)
@@ -65,7 +63,7 @@ Usa esto para calificar cada intervención del estudiante:
 }
 """
 
-# 3. MAPEADO DE IMÁGENES
+# 3. MAPEADO DE MOODS
 MOOD_DATA = {
     "ar": {"img": "Img_ActiveResistance_1.png", "nombre": "RESISTENCIA ACTIVA", "color": "#e84118"},
     "de": {"img": "Img_Despair_1.png", "nombre": "DESESPERANZA", "color": "#9c88ff"},
@@ -82,21 +80,17 @@ if 'history' not in st.session_state:
     st.session_state.mateo = OSPatient(image_folder="images")
     st.session_state.last_speech = ""
     st.session_state.processing = False
-    st.session_state.audio_played = True # Control de repetición
 
-# --- CSS: BAJAR INTERFAZ Y COMPACTAR ---
+# --- CSS: ESPACIADO SUPERIOR ---
 st.markdown("""
     <style>
-    .block-container { 
-        max-width: 800px !important; 
-        padding-top: 12rem !important; /* BAJAMOS LA APP */
-    }
-    .feedback-box {
-        background-color: #f0f2f6; padding: 10px; border-radius: 8px; 
-        border-left: 6px solid; color: #1f1f1f; font-size: 0.8em;
-    }
+    .block-container { max-width: 800px !important; padding-top: 8rem !important; }
+    .feedback-box { background-color: #f0f2f6; padding: 10px; border-radius: 8px; border-left: 6px solid; color: #1f1f1f; font-size: 0.8em; }
     </style>
 """, unsafe_allow_html=True)
+
+# --- ESPACIO RESERVADO PARA EL AUDIO (Evita el eco) ---
+audio_placeholder = st.empty()
 
 # --- DISTRIBUCIÓN ---
 col_stats, col_chat = st.columns([1, 1.6])
@@ -105,13 +99,10 @@ with col_stats:
     mood_info = MOOD_DATA.get(st.session_state.current_mood, MOOD_DATA["ar"])
     img_path = os.path.join("images", mood_info["img"])
     if os.path.exists(img_path): st.image(img_path, width=180)
-    
     st.markdown(f"<p style='color:{mood_info['color']}; font-weight:bold; margin:0;'>{mood_info['nombre']}</p>", unsafe_allow_html=True)
     st.write(f"**Etapa:** {st.session_state.score}%")
     st.progress(st.session_state.score / 100)
-    
-    st.markdown(f"""<div class="feedback-box" style="border-left-color: {mood_info['color']};">
-        <b>{st.session_state.feedback['tecnica']}</b><br>{st.session_state.feedback['desc']}</div>""", unsafe_allow_html=True)
+    st.markdown(f'<div class="feedback-box" style="border-left-color: {mood_info["color"]};"><b>{st.session_state.feedback["tecnica"]}</b><br>{st.session_state.feedback["desc"]}</div>', unsafe_allow_html=True)
 
 with col_chat:
     chat_container = st.container(height=280)
@@ -139,27 +130,25 @@ if st.session_state.processing:
             if "```json" in raw_res: raw_res = raw_res.split("```json")[1].split("```")[0].strip()
             data = json.loads(raw_res.strip())
             
-            # Actualización de estados
             st.session_state.score = max(0, min(100, st.session_state.score + data['evaluacion']['puntos_etapa']))
             st.session_state.current_mood = data['mateo_stats']['nuevo_mood']
             st.session_state.feedback = {"tecnica": data['evaluacion']['tecnica_detectada'], "desc": data['evaluacion']['feedback_clinico']}
             resp_txt = data['mateo_stats']['texto_respuesta']
             st.session_state.history.append({"role": "assistant", "content": resp_txt})
             
-            # --- TÉCNICA DE AUDIO ÚNICO ---
+            # --- GENERACIÓN DE AUDIO EN EL SERVIDOR ---
             st.session_state.mateo.generate_and_play_audio(resp_txt)
+            
             if os.path.exists("temp_voice.mp3"):
                 with open("temp_voice.mp3", "rb") as f:
                     b64 = base64.b64encode(f.read()).decode()
-                    # El audio se inyecta AQUÍ y el rerun se encarga de limpiar el DOM después
-                    audio_html = f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>'
-                    st.markdown(audio_html, unsafe_allow_html=True)
+                    # Inyectamos el audio en el placeholder justo antes de terminar
+                    audio_placeholder.markdown(f'<audio autoplay="true"><source src="data:audio/mp3;base64,{b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
             
             st.session_state.processing = False
-            # NO agregamos delay extra aquí para evitar que el navegador repita el bloque
+            time.sleep(0.1) # Pausa mínima para que el navegador "cachee" el audio
             st.rerun()
             
         except Exception as e:
             st.session_state.processing = False
-
             st.error(f"Error: {e}")
